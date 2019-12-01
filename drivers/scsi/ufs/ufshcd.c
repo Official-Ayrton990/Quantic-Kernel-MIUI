@@ -210,6 +210,8 @@ static void ufshcd_update_uic_error_cnt(struct ufs_hba *hba, u32 reg, int type)
 /* UIC command timeout, unit: ms */
 #define UIC_CMD_TIMEOUT	500
 
+#define UIC_PWR_CTRL_TIMEOUT 3000
+
 /* NOP OUT retries waiting for NOP IN response */
 #define NOP_OUT_RETRIES    10
 /* Timeout after 30 msecs if NOP OUT hangs without response */
@@ -218,7 +220,7 @@ static void ufshcd_update_uic_error_cnt(struct ufs_hba *hba, u32 reg, int type)
 /* Query request retries */
 #define QUERY_REQ_RETRIES 3
 /* Query request timeout */
-#define QUERY_REQ_TIMEOUT 1500 /* 1.5 seconds */
+#define QUERY_REQ_TIMEOUT 3000 /* 3.0 seconds */
 
 /* Task management command timeout */
 #define TM_CMD_TIMEOUT	100 /* msecs */
@@ -420,6 +422,8 @@ static struct ufs_dev_fix ufs_fixups[] = {
 	UFS_FIX(UFS_VENDOR_SKHYNIX, UFS_ANY_MODEL,
 		UFS_DEVICE_QUIRK_HOST_PA_SAVECONFIGTIME),
 	UFS_FIX(UFS_VENDOR_SKHYNIX, UFS_ANY_MODEL,
+		UFS_DEVICE_QUIRK_WAIT_AFTER_REF_CLK_UNGATE),
+	UFS_FIX(UFS_VENDOR_SANDISK, UFS_ANY_MODEL,
 		UFS_DEVICE_QUIRK_WAIT_AFTER_REF_CLK_UNGATE),
 	UFS_FIX(UFS_VENDOR_SKHYNIX, "hB8aL1",
 		UFS_DEVICE_QUIRK_HS_G1_TO_HS_G3_SWITCH),
@@ -3166,8 +3170,6 @@ ufshcd_dispatch_uic_cmd(struct ufs_hba *hba, struct uic_command *uic_cmd)
 	/* Write UIC Cmd */
 	ufshcd_writel(hba, uic_cmd->command & COMMAND_OPCODE_MASK,
 		      REG_UIC_COMMAND);
-	/* Make sure that UIC command is committed immediately */
-	wmb();
 }
 
 /**
@@ -5107,7 +5109,6 @@ static int ufshcd_uic_pwr_ctrl(struct ufs_hba *hba, struct uic_command *cmd)
 	u8 status;
 	int ret;
 	bool reenable_intr = false;
-	int wait_retries = 6; /* Allows 3secs max wait time */
 
 	mutex_lock(&hba->uic_cmd_mutex);
 	init_completion(&uic_async_done);
@@ -5134,42 +5135,11 @@ static int ufshcd_uic_pwr_ctrl(struct ufs_hba *hba, struct uic_command *cmd)
 		goto out;
 	}
 
-more_wait:
 	if (!wait_for_completion_timeout(hba->uic_async_done,
-					 msecs_to_jiffies(UIC_CMD_TIMEOUT))) {
-		u32 intr_status = 0;
-		s64 ts_since_last_intr;
-
+					 msecs_to_jiffies(UIC_PWR_CTRL_TIMEOUT))) {
 		dev_err(hba->dev,
 			"pwr ctrl cmd 0x%x with mode 0x%x completion timeout\n",
 			cmd->command, cmd->argument3);
-		/*
-		 * The controller must have triggered interrupt but ISR couldn't
-		 * run due to interrupt starvation.
-		 * Or ISR must have executed just after the timeout
-		 * (which clears IS registers)
-		 * If either of these two cases is true, then
-		 * wait for little more time for completion.
-		 */
-		intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
-		ts_since_last_intr = ktime_ms_delta(ktime_get(),
-						hba->ufs_stats.last_intr_ts);
-
-		if ((intr_status & UFSHCD_UIC_PWR_MASK) ||
-		    ((hba->ufs_stats.last_intr_status & UFSHCD_UIC_PWR_MASK) &&
-		     (ts_since_last_intr < (s64)UIC_CMD_TIMEOUT))) {
-			dev_info(hba->dev, "IS:0x%08x last_intr_sts:0x%08x last_intr_ts:%lld, retry-cnt:%d\n",
-				intr_status, hba->ufs_stats.last_intr_status,
-				hba->ufs_stats.last_intr_ts, wait_retries);
-			if (wait_retries--)
-				goto more_wait;
-
-			/*
-			 * If same state continues event after more wait time,
-			 * something must be hogging CPU.
-			 */
-			BUG_ON(hba->crash_on_err);
-		}
 		ret = -ETIMEDOUT;
 		goto out;
 	}
@@ -5316,6 +5286,8 @@ static int __ufshcd_uic_hibern8_enter(struct ufs_hba *hba)
 		ufshcd_update_error_stats(hba, UFS_ERR_HIBERN8_ENTER);
 		dev_err(hba->dev, "%s: hibern8 enter failed. ret = %d\n",
 			__func__, ret);
+		if (hba->crash_on_err)
+			BUG_ON(1);
 
 		/*
 		 * If link recovery fails then return error code (-ENOLINK)
@@ -6691,7 +6663,6 @@ static int ufshcd_disable_auto_bkops(struct ufs_hba *hba)
 
 	hba->auto_bkops_enabled = false;
 	trace_ufshcd_auto_bkops_state(dev_name(hba->dev), 0);
-	hba->is_urgent_bkops_lvl_checked = false;
 out:
 	return err;
 }
@@ -6716,7 +6687,6 @@ static void ufshcd_force_reset_auto_bkops(struct ufs_hba *hba)
 		hba->ee_ctrl_mask &= ~MASK_EE_URGENT_BKOPS;
 		ufshcd_disable_auto_bkops(hba);
 	}
-	hba->is_urgent_bkops_lvl_checked = false;
 }
 
 static inline int ufshcd_get_bkops_status(struct ufs_hba *hba, u32 *status)
@@ -6763,7 +6733,6 @@ static int ufshcd_bkops_ctrl(struct ufs_hba *hba,
 		err = ufshcd_enable_auto_bkops(hba);
 	else
 		err = ufshcd_disable_auto_bkops(hba);
-	hba->urgent_bkops_lvl = curr_status;
 out:
 	return err;
 }
@@ -8741,8 +8710,7 @@ out:
 	return err;
 }
 
-/**
- * ufshcd_probe_hba - probe hba to detect device and initialize
+/* ufshcd_probe_hba - probe hba to detect device and initialize
  * @hba: per-adapter instance
  *
  * Execute link-startup and verify device initialization
@@ -8880,8 +8848,7 @@ reinit:
 			hba->dev_info.f_power_on_wp_en = flag;
 
 		/* Add required well known logical units to scsi mid layer */
-		ret = ufshcd_scsi_add_wlus(hba);
-		if (ret)
+		if (ufshcd_scsi_add_wlus(hba))
 			goto out;
 
 		/* lower VCC voltage level */

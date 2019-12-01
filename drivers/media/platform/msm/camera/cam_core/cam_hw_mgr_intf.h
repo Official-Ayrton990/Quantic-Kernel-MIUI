@@ -1,4 +1,6 @@
 /* Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2017-2019, The Linux Foundation. All rights reserved.
+ * Copyright (C) 2019 XiaoMi, Inc.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -264,6 +266,7 @@ struct cam_hw_dump_pf_args {
 	bool                           *mem_found;
 };
 
+<<<<<<< HEAD
 /**
  * struct cam_hw_reset_args -hw reset arguments
  *
@@ -339,9 +342,7 @@ struct cam_hw_cmd_args {
  *                             the hardware manager
  * @hw_open:                   Function pointer for HW init
  * @hw_close:                  Function pointer for HW deinit
- * @hw_flush:                  Function pointer for HW flush
- * @hw_reset:                  Function pointer for HW reset
- * @hw_dump:                   Function pointer for HW dump
+ * @hw_flush:                  Function pointer for HW flu
  *
  */
 struct cam_hw_mgr_intf {

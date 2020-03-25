@@ -2623,7 +2623,7 @@ static ssize_t fts_fod_status_show(struct device *dev,
 {
 	struct fts_ts_info *info = dev_get_drvdata(dev);
 
-	return snprintf(buf, TSP_BUF_SIZE, "%d\n", info->fod_status);
+	return snprintf(buf, TSP_BUF_SIZE, "%d\n", info->fod_enable); /*change fod_status to fod_enable as it follows the beta changes*/
 }
 
 static ssize_t fts_fod_status_store(struct device *dev,
@@ -2637,10 +2637,10 @@ static ssize_t fts_fod_status_store(struct device *dev,
 	u8 single_double_cmd[4] = {0xC0, 0x02, 0x01, 0x1E};
 
 	logError(1, " %s %s buf:%c,count:%zu\n", tag, __func__, buf[0], count);
-	sscanf(buf, "%u", &info->fod_status);
+	sscanf(buf, "%u", &info->fod_enable); /*change fod_status to fod_enable as it follows the beta changes*/
 
 	mutex_lock(&info->fod_mutex);
-	if (info->fod_status) {
+	if (info->fod_enable) { /*change fod_status to fod_enable as it follows the beta changes*/
 		if (info->fod_status_set) {
 			logError(1, " %s %s fod status has set\n", tag, __func__);
 		} else {
@@ -3072,7 +3072,7 @@ static DEVICE_ATTR(touch_suspend_notify, (S_IRUGO | S_IRGRP),
 		   fts_touch_suspend_notify_show, NULL);
 #endif
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
-static DEVICE_ATTR(fod_status, (S_IRUGO | S_IWUSR | S_IWGRP),
+static DEVICE_ATTR(fod_enable, (S_IRUGO | S_IWUSR | S_IWGRP),/*change fod_status to fod_enable as it follows the beta changes*/
 		   fts_fod_status_show, fts_fod_status_store);
 
 static DEVICE_ATTR(fod_test, (S_IRUGO | S_IWUSR | S_IWGRP), NULL, fts_fod_test_store);
@@ -3239,7 +3239,7 @@ static void fts_enter_pointer_event_handler(struct fts_ts_info *info,
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
 		if (fts_is_in_fodarea(x, y) && !(info->fod_id & ~(1 << touchId))) {
 			__set_bit(touchId, &info->sleep_finger);
-			if (info->fod_status) {
+			if (info->fod_enable) { /*change fod_status to fod_enable as it follows the beta changes*/
 				info->fod_x = x;
 				info->fod_y = y;
 				info->fod_coordinate_update = true;
@@ -3741,7 +3741,7 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 	if (event[0] == EVT_ID_USER_REPORT && event[1] == EVT_TYPE_USER_GESTURE) {
 		needCoords = 1;
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (event[2] == GEST_ID_LONG_PRESS && info->fod_status) {
+		if (event[2] == GEST_ID_LONG_PRESS && info->fod_enable) {/*change fod_status to fod_enable as it follows the beta changes*/
 			touch_area = (event[9] << 8) | (event[8]);
 			fod_overlap = (event[11] << 8) | (event[10]);
 			if ((!info->sensor_sleep && info->fod_coordinate_update &&
@@ -3789,7 +3789,7 @@ static void fts_gesture_event_handler(struct fts_ts_info *info,
 				}
 			}
 				goto gesture_done;
-		} else if (event[2] == GEST_ID_SINGTAP && info->fod_status) {
+		} else if (event[2] == GEST_ID_SINGTAP && info->fod_enable) {/*change fod_status to fod_enable as it follows the beta changes*/
 			input_report_key(info->input_dev, KEY_GOTO, 1);
 			input_sync(info->input_dev);
 			input_report_key(info->input_dev, KEY_GOTO, 0);
@@ -4688,7 +4688,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 		logError(0, "%s %s: Screen OFF... \n", tag, __func__);
 
 #ifdef CONFIG_FTS_FOD_AREA_REPORT
-		if (info->fod_status) {
+		if (info->fod_enable) { /*change fod_status to fod_enable as it follows the beta changes*/
 			logError(1, "%s %s: Sense OFF by FOD \n", tag, __func__);
 			logError(1, "%s %s,send long press and gesture cmd\n", tag, __func__);
 			res = fts_write_dma_safe(gesture_cmd, ARRAY_SIZE(gesture_cmd));
@@ -4859,7 +4859,7 @@ static int fts_mode_handler(struct fts_ts_info *info, int force)
 			res |= setScanMode(SCAN_MODE_ACTIVE, 0x01);
 		}
 		info->sensor_scan = true;
-		if (info->fod_status) {
+		if (info->fod_enable) {/*change fod_status to fod_enable as it follows the beta changes*/
 			res = fts_write_dma_safe(gesture_cmd, ARRAY_SIZE(gesture_cmd));
 			if (res < OK)
 					logError(1, "%s %s: enter gesture and longpress failed! ERROR %08X recovery in senseOff...\n",
@@ -5574,7 +5574,7 @@ static void fts_suspend_work(struct work_struct *work)
 
 	info->sensor_sleep = true;
 
-	if (info->gesture_enabled || info->fod_status)
+	if (info->gesture_enabled || info->fod_enable)/*change fod_status to fod_enable as it follows the beta changes*/
 		fts_enableInterrupt();
 #ifdef CONFIG_FTS_TOUCH_COUNT_DUMP
 	sysfs_notify(&fts_info->fts_touch_dev->kobj, NULL,

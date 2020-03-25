@@ -362,6 +362,7 @@ struct fts_ts_info {
 	bool fod_status_set;
 	bool fod_pressed;
 	bool p_sensor_changed;
+	bool fod_enabled; /*enable boolean fod_enable as it follows the beta changes*/
 	bool p_sensor_switch;
 	bool palm_sensor_changed;
 	bool palm_sensor_switch;
